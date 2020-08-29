@@ -7,24 +7,32 @@
 #define GL_GLEXT_PROTOTYPES
 #include <GLFW/glfw3.h>
 
+#include "game_math.h"
+
+#define ARRAYSIZE(array) (sizeof(array)/sizeof(array[0]))
+
 static const GLuint WIDTH = 800;
 static const GLuint HEIGHT = 600;
-static const GLchar* vertex_shader_source =
-    "#version 300 es\n"
-    "in vec3 position;\n"
-    "uniform mat4 perspective_transform;\n"
-    "uniform mat4 model_transform;\n"
-    "void main() {\n"
-    "   vec4 model_position = model_transform * vec4(position, 1.0);\n"
-    "   gl_Position = perspective_transform * model_position;\n"
-    "}\n";
-static const GLchar* fragment_shader_source =
-    "#version 300 es\n"
-    "precision mediump float;\n"
-    "out vec4 FragColor;\n"
-    "void main() {\n"
-    "   FragColor = vec4(0.8, 0.0, 0.0, 1.0);\n"
-    "}\n";
+static const GLchar* vertex_shader_source = R"FOO(
+#version 300 es
+layout(location = 0) in vec3 position;
+uniform mat4 model_transform;
+uniform mat4 view_transform;
+uniform mat4 projection_transform;
+void main() {
+   vec4 model_position = model_transform * vec4(position, 1.0);
+   gl_Position = projection_transform * view_transform * model_position;
+}
+)FOO";
+
+static const GLchar* fragment_shader_source = R"FOO(
+#version 300 es
+precision mediump float;
+out vec4 FragColor;
+void main() {
+   FragColor = vec4(0.8, 0.0, 0.0, 1.0);
+}
+)FOO";
 
 //
 // Static triangle data
@@ -43,17 +51,6 @@ static const unsigned int triangle_indices[] = {
 // Static cube data
 //
 static const GLfloat cube_vertices[] = {
-/*    // bottom square
-    -0.5f, -0.5f, -0.5f, // (0) front left
-    -0.5f, -0.5f,  0.5f, // (1) back left
-     0.5f, -0.5f,  0.5f, // (2) back right
-     0.5f, -0.5f, -0.5f, // (3) front right
-    // top square
-    -0.5f,  0.5f, -0.5f, // (4) front left
-    -0.5f,  0.5f,  0.5f, // (5) back left
-     0.5f,  0.5f,  0.5f, // (6) back right
-     0.5f,  0.5f, -0.5f, // (7) front right
-*/
     // bottom square
     -1.0f, -1.0f, -1.0f, // (0) front left
     -1.0f, -1.0f,  1.0f, // (1) back left
@@ -71,11 +68,18 @@ static const unsigned int cube_indices[] = {
     // top square
     4, 5, 6, 4, 6, 7,
     // back square
-//    1, 6, 5, 1, 2, 6,
+    1, 6, 5, 1, 2, 6,
     // right square
 //    3, 7, 6, 3, 6, 2,
     // some dummy fillers
 //    0, 0, 0, 0, 0, 0
+};
+
+static GLfloat identity_transform[] = {
+    1.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 1.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 1.0f,
 };
 
 GLint common_get_shader_program(const char *vertex_shader_source, const char *fragment_shader_source) {
@@ -167,7 +171,7 @@ int main(void) {
             quit = 1;
         }
 
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(shader_program);
 
         // Create the 3D projection transform
@@ -178,18 +182,17 @@ int main(void) {
         float B = near * aspect;
         float C = (far + near) / (far - near);
         float D = 2 * far * near / (far - near);
-        GLfloat perspective_transform[] = {
+        GLfloat projection_transform[] = {
             A,    0.0f,  0.0f, 0.0f,
             0.0f, B,     0.0f, 0.0f,
             0.0f, 0.0f,  C,    D,
             0.0f, 0.0f, -1.0f, 0.0f,
         };
-        GLint perspective_mat_loc = glGetUniformLocation(shader_program, "perspective_transform");
-        assert(perspective_mat_loc != -1);
-        glUniformMatrix4fv(perspective_mat_loc, 1, GL_TRUE, perspective_transform);
+        GLint projection_mat_loc = glGetUniformLocation(shader_program, "projection_transform");
+        assert(projection_mat_loc != -1);
+        glUniformMatrix4fv(projection_mat_loc, 1, GL_TRUE, projection_transform);
 
         // Create the model transform
-        // - the identity matrix (no transform)
         GLfloat model_transform[] = {
             0.5f, 0.0f, 0.0f, 0.0f,
             0.0f, 0.5f, 0.0f, 0.0f,
@@ -200,9 +203,14 @@ int main(void) {
         assert(model_mat_loc != -1);
         glUniformMatrix4fv(model_mat_loc, 1, GL_TRUE, model_transform);
 
+        // Create the camera transform
+        GLint view_mat_loc = glGetUniformLocation(shader_program, "view_transform");
+        assert(view_mat_loc != -1);
+        glUniformMatrix4fv(view_mat_loc, 1, GL_TRUE, identity_transform);
+
         //glDrawArrays(GL_TRIANGLES, 0, 3);
         //glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, triangle_indices);
-        glDrawElements(GL_TRIANGLES, sizeof(cube_indices)/sizeof(cube_indices[0]), GL_UNSIGNED_INT, cube_indices);
+        glDrawElements(GL_TRIANGLES, ARRAYSIZE(cube_indices), GL_UNSIGNED_INT, cube_indices);
         glfwSwapBuffers(window);
     }
     glDeleteBuffers(2, vbo);

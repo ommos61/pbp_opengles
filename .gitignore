@@ -19,3 +19,5 @@
 
 # Project specific: generates executable
 game
+test_game_math
+glm_test
